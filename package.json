@@ -1,0 +1,23 @@
+{
+  "name": "udp2p",
+  "version": "0.0.1",
+  "description": "P2P connection with UDP hole punching",
+  "main": "index.js",
+  "scripts": {
+    "test": "bin/test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Luphia/UDP2P.git"
+  },
+  "keywords": [
+    "p2p",
+    "udp"
+  ],
+  "author": "Luphia Chang",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Luphia/UDP2P/issues"
+  },
+  "homepage": "https://github.com/Luphia/UDP2P#readme"
+}
