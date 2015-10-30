@@ -22,10 +22,7 @@ udp2p.checkIP = function (cb) {
 
 // static function
 udp2p.fetchIP = function () {
-
-
-  var ifaces = os.getNetworkInterfaces();
-  var interfaces = os.getNetworkInterfaces();
+  var interfaces = os.networkInterfaces();
   var IPs = [];
   for(var i in interfaces) {
     if(Array.isArray(interfaces[i])) {
