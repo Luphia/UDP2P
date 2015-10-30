@@ -7,14 +7,23 @@ client = new udp2p();
  */
 
 var os = require('os'),
+    dgram = require('dgram'),
+    net = require('net'),
     dvalue = require('dvalue');
 
 var udp2p = function (config) {
   this.init(config);
 };
 
+// get self IP for connection
+udp2p.checkIP = function (cb) {
+
+};
+
 // static function
 udp2p.fetchIP = function () {
+
+
   var ifaces = os.getNetworkInterfaces();
   var interfaces = os.getNetworkInterfaces();
   var IPs = [];
@@ -49,14 +58,44 @@ udp2p.prototype.init = function (config) {
 
   // 0: server, 1: client
   this.mode = config.server? 0: 1;
+  this.listen();
 };
 
+udp2p.prototype.listen = function (port) {
+  var that = this;
+  this.udp = dgram.createSocket('udp4');
+  this.udp.on('listening', function () {
+
+  });
+
+  this.udp.on('message', function () {
+    that.parseMessage();
+  });
+
+  this.udp.bind(port);
+};
 
 udp2p.prototype.getStatus = function () {
-  var status = {
-
-  };
+  var status = {};
   return status;
+};
+
+udp2p.prototype.parseMessage = function (message) {
+
+};
+
+// Register as a candidate(to tracker) or a client(to leader)
+udp2p.prototype.regist = function (server, cb) {
+
+};
+
+// need to link to tracker first
+udp2p.prototype.connect = function (server, cb) {
+
+};
+
+udp2p.prototype.peerTo = function (client, cb) {
+
 };
 
 module.exports = udp2p;
