@@ -4,10 +4,10 @@ var udp2p = require('udp2p');
 var udp2p = require('./index.js');
 client = new udp2p();
 
-var server = { address: '127.0.0.1', port: 2266 };
+var server = { address: 'laria.space', port: 2266 };
 client.connect(server, function () {
   client.getClientList(function(e, d) {
-    var c = d[0].name;
+    var c = d.pop().name;
     console.log(c);
     client.peerTo(c, function (ee, dd) {
       console.log(dd);
@@ -208,6 +208,7 @@ udp2p.prototype.getStatus = function () {
 udp2p.prototype.execMessage = function (msg, peer) {
   try {
     msg = JSON.parse(msg);
+    console.log("get", peer, msg);
     switch (msg.type) {
       case 'clientList':
         this.done(msg._id, msg.clientList);
@@ -391,6 +392,7 @@ udp2p.prototype.tunnelMsg = function (msg, tunnel, cb) {
 };
 
 udp2p.prototype.send = function (msg, peer, cb) {
+  console.log("send", peer, msg);
   var data = new Buffer(JSON.stringify(msg));
   this.udp.send(data, 0, data.length, peer.port, peer.address, function(err, bytes) {
     if(typeof(cb) == 'function') { cb(); }
