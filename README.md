@@ -14,17 +14,14 @@ var options = {
   tracker: [tracker]
 };
 
-server = new udp2p(options);
-server.start(function(err) {
-  console.log("status:", server.getStatus());
-});
+var server = new udp2p(options);
 ```
 
-## Connect with hold punching server
+## Connect with hole punching server
 ```node
 var udp2p = require('udp2p');
 var client = new udp2p();
-var tracker = {
+var server = {
   host: 'tracker.cc-wei.com',
   port: 2266
 };
@@ -33,21 +30,20 @@ client.connect(tracker, function(err) {
   console.log("status:", client.getStatus());
 });
 ```
-### Fetch client list and connect to the first one
+### Fetch client list
 ```node
 client.fetchClient(function(err, list) {
-  if(err || list.length == 0) { return; }
-  client.peerTo(list[0], function(err) {
-    console.log("status:", client.getStatus());
-  });
+  console.log(list);
 });
 ```
 ### Send message
 ```node
 var message = {
-  hello: 'udp2p'
+  message: 'Hello UDP2P!'
 };
-client.send(message, function(err, response) {
-  console.log('get response:', response);
+
+var peer = client.getClientList().pop().name;
+client.peerMsg(message, peer, function(err, response) {
+  console.log('send to %s', peer);
 });
 ```
