@@ -10,7 +10,7 @@ npm install udp2p
 ```node
 var udp2p = require('udp2p');
 var tracker = {
-  host: 'tracker.cc-wei.com',
+  address: 'tracker.cc-wei.com',
   port: 2266
 };
 var options = {
@@ -27,7 +27,7 @@ var server = new udp2p(options);
 var udp2p = require('udp2p');
 var client = new udp2p();
 var server = {
-  host: 'tracker.cc-wei.com',
+  address: 'tracker.cc-wei.com',
   port: 2266
 };
 
