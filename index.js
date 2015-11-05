@@ -295,7 +295,7 @@ udp2p.prototype.getClientList = function (cb) {
       data.map(function (v) {
         self.addClient(v);
       });
-      cb(undefined, self.clients);
+      cb(undefined, dvalue.clone(self.clients));
   });
   this.send(msg, server, function () {});
 };
