@@ -1,7 +1,7 @@
 # UDP2P
 P2P connection with UDP hole punching
 
-## Provides hole punching services
+## Provides hole punching services (Server Mode)
 ```node
 var udp2p = require('udp2p');
 var tracker = {
@@ -17,7 +17,7 @@ var options = {
 var server = new udp2p(options);
 ```
 
-## Connect with hole punching server
+## Connect with hole punching server (Client Mode)
 ```node
 var udp2p = require('udp2p');
 var client = new udp2p();
