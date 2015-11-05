@@ -1,10 +1,14 @@
 /*
 
-var udp2p = require('udp2p');
+// start server
+var udp2p = require('./index.js');
+server = new udp2p({server: true});
+
+// start client
 var udp2p = require('./index.js');
 client = new udp2p();
 
-var server = { address: 'laria.space', port: 2266 };
+var server = { address: '127.0.0.1', port: 2266 };
 client.connect(server, function () {
   client.getClientList(function(e, d) {
     var c = d.pop().name;
@@ -15,11 +19,6 @@ client.connect(server, function () {
     });
   });
 });
-
-
-
-var msg = { test: 'message' };
-client.send(msg, list[1], function () {});
 
  */
 
@@ -33,6 +32,9 @@ var server = {
   address: 'laria.space',
   port: 2266
 };
+
+var period = 10000;
+var waitingRate = 3;
 
 var udp2p = function (config) {
   this.init(config);
@@ -139,9 +141,14 @@ udp2p.prototype.init = function (config) {
 
   // 0: server, 1: client
   this.mode = config.server? 0: 1;
-  this.listen(undefined, function (err, data) {
-    self.info.port = data;
-  });
+  if(config.server) {
+    this.startServer(config);
+  }
+  else {
+    this.listen(undefined, function (err, data) {
+      self.info.port = data;
+    });
+  }
 };
 
 udp2p.prototype.get = function (key) {
@@ -208,7 +215,6 @@ udp2p.prototype.getStatus = function () {
 udp2p.prototype.execMessage = function (msg, peer) {
   try {
     msg = JSON.parse(msg);
-    console.log("get", peer, msg);
     switch (msg.type) {
       case 'clientList':
         this.done(msg._id, msg.clientList);
@@ -226,7 +232,7 @@ udp2p.prototype.execMessage = function (msg, peer) {
         this.punch(client, function () {});
         break;
       default:
-        console.log(msg);//--
+        console.log('Message from %s: %s', msg._from, msg.message);//--
     }
   }
   catch (err) {
@@ -263,6 +269,8 @@ udp2p.prototype.translate = function (cmd) {
     case 'ack':
       message.type = 'ack';
       break;
+    case 'heartbeat':
+      break;
     default:
   }
 
@@ -282,9 +290,32 @@ udp2p.prototype.connect = function (node, cb) {
   this.start(function() {
     var msg = self.translate('register');
     self.send(msg, server, function() {
+      self.heartbeat();
       if(typeof(cb) == 'function') { cb(); }
     });
   });
+};
+
+udp2p.prototype.heartbeat = function () {
+  var self = this;
+  this.sendHeartbeat(server);
+  if(this.isAlive) { return; }
+  this.isAlive = setTimeout(function () {
+    delete self.isAlive;
+    self.heartbeat();
+  }, period);
+};
+udp2p.prototype.sendHeartbeat = function (server) {
+  var self = this;
+  if(Array.isArray(server)) {
+    server.map(function (v) {
+      self.sendHeartbeat(v);
+    });
+  }
+  else {
+    var msg = this.translate('heartbeat');
+    this.send(msg, server, function () {})
+  }
 };
 
 udp2p.prototype.getClientList = function (cb) {
@@ -388,11 +419,11 @@ udp2p.prototype.peerMsg = function (msg, client, cb) {
   }
 };
 udp2p.prototype.tunnelMsg = function (msg, tunnel, cb) {
+  msg._from = this.get('name');
   this.send(msg, tunnel, cb);
 };
 
 udp2p.prototype.send = function (msg, peer, cb) {
-  console.log("send", peer, msg);
   var data = new Buffer(JSON.stringify(msg));
   this.udp.send(data, 0, data.length, peer.port, peer.address, function(err, bytes) {
     if(typeof(cb) == 'function') { cb(); }
@@ -451,6 +482,93 @@ udp2p.prototype.cleanEvent = function (event) {
 };
 udp2p.prototype.cbReturn = function (err, data, cb) {
 	cb.map(function (f) {if(typeof f == 'function') f(err, data); });
+};
+
+udp2p.prototype.startServer = function (options) {
+  options = dvalue.default(options, {
+    port: 2266
+  });
+
+  var udp_matchmaker = dgram.createSocket('udp4');
+  var clients = {};
+
+  udp_matchmaker.on('listening', function() {
+    var address = udp_matchmaker.address();
+    console.log('# listening [%s:%s]', address.address, address.port);
+  });
+
+  udp_matchmaker.on('message', function(data, rinfo) {
+		delete rinfo.size;
+    try {
+      data = JSON.parse(data);
+    } catch (e) {
+      return console.log('! Couldn\'t parse data (%s):\n%s', e, data);
+    }
+    if (data.type == 'register') {
+      clients[data.name] = {
+          name: data.name,
+          connections: {
+            local: data.linfo,
+            public: rinfo
+          },
+					timestamp: new Date() / 1
+      };
+      console.log('# Client registered: %s@[%s:%s | %s:%s]', data.name,
+                  rinfo.address, rinfo.port, data.linfo.address, data.linfo.port);
+    }
+		else if (data.type == 'connect') {
+      var couple = [ clients[data.from], clients[data.to] ]
+      for (var i=0; i<couple.length; i++) {
+        if (!couple[i]) return console.log('Client unknown!');
+      }
+
+      for (var i=0; i<couple.length; i++) {
+        send(couple[i].connections.public.address, couple[i].connections.public.port, {
+					_id: data._id,
+          type: 'connection',
+          client: couple[(i+1)%couple.length],
+        });
+      }
+    }
+		else if (data.type == 'clientList') {
+			var response = {
+				_id: data._id,
+				type: 'clientList',
+				clientList: []
+			}
+			var list = dvalue.clone(clients);
+			for(var k in list) {
+				if(new Date() - list[k].timestamp < (waitingRate * period) && (list[k].connections.public.address != rinfo.address || list[k].connections.public.port != rinfo.port)) {
+					response.clientList.push(list[k]);
+				}
+			}
+			send(rinfo.address, rinfo.port, response);
+		}
+
+    // every message as heartbeat
+    if (data._from !== undefined) {
+      var id = data._from;
+      if(typeof(clients[id]) == 'object') {
+        clients[id].connections.public = rinfo;
+        clients[id].timestamp = new Date() / 1;
+      }
+    }
+  });
+
+  var send = function(host, port, msg, cb) {
+    var data = new Buffer(JSON.stringify(msg));
+    udp_matchmaker.send(data, 0, data.length, port, host, function(err, bytes) {
+      if (err) {
+        udp_matchmaker.close();
+        console.log('# stopped due to error: %s', err);
+      } else {
+        console.log('# sent '+msg.type);
+        if (cb) cb();
+      }
+    });
+  }
+
+  udp_matchmaker.bind(options.port);
 };
 
 module.exports = udp2p;
