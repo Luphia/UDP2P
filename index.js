@@ -7,8 +7,8 @@ var server = new udp2p({server: true});
 // start client
 var udp2p = require('./index.js');
 client = new udp2p();
-
 var server = { address: '127.0.0.1', port: 2266 };
+
 client.connect(server, function () {
   client.fetchClient(function(e, d) {
     var c = d.pop().name;
@@ -331,8 +331,8 @@ udp2p.prototype.fetchClient = function (cb) {
   this.send(msg, server, function () {});
 };
 
-udp2p.getClientList = function () {
-  return dvalue.clone(self.clients);
+udp2p.prototype.getClientList = function () {
+  return dvalue.clone(this.clients);
 };
 
 udp2p.prototype.addClient = function (client) {
