@@ -2,7 +2,7 @@
 
 // start server
 var udp2p = require('./index.js');
-server = new udp2p({server: true});
+var server = new udp2p({server: true});
 
 // start client
 var udp2p = require('./index.js');
@@ -10,7 +10,7 @@ client = new udp2p();
 
 var server = { address: '127.0.0.1', port: 2266 };
 client.connect(server, function () {
-  client.getClientList(function(e, d) {
+  client.fetchClient(function(e, d) {
     var c = d.pop().name;
     console.log(c);
     client.peerTo(c, function (ee, dd) {
@@ -318,7 +318,7 @@ udp2p.prototype.sendHeartbeat = function (server) {
   }
 };
 
-udp2p.prototype.getClientList = function (cb) {
+udp2p.prototype.fetchClient = function (cb) {
   cb = dvalue.default(cb, function () {});
   var self = this;
   var msg = self.translate('clientList');
@@ -329,6 +329,10 @@ udp2p.prototype.getClientList = function (cb) {
       cb(undefined, dvalue.clone(self.clients));
   });
   this.send(msg, server, function () {});
+};
+
+udp2p.getClientList = function () {
+  return dvalue.clone(self.clients);
 };
 
 udp2p.prototype.addClient = function (client) {
