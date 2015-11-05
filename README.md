@@ -26,7 +26,7 @@ var server = {
   port: 2266
 };
 
-client.connect(tracker, function(err) {
+client.connect(server, function(err) {
   console.log("status:", client.getStatus());
 });
 ```
