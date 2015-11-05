@@ -1,6 +1,11 @@
 # UDP2P
 P2P connection with UDP hole punching
 
+## Install
+```shell
+npm install udp2p
+```
+
 ## Provides hole punching services (Server Mode)
 ```node
 var udp2p = require('udp2p');
