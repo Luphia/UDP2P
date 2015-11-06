@@ -6,6 +6,25 @@ P2P connection with UDP hole punching
 npm install udp2p
 ```
 
+## Quick start
+```node
+var udp2p = require('./index.js');
+client = new udp2p();
+
+client.connect(function () {
+  client.fetchClient(function(e, d) {
+    d.map(function(v) {
+      var c = v.name;
+      client.peerTo(c, function (ee, dd) {
+        console.log(dd);
+        client.tunnelMsg({message: 'Hello, ' + c}, dd, function () {});
+      });
+    })
+  });
+});
+
+```
+
 ## Provides hole punching services (Server Mode)
 ```node
 var udp2p = require('udp2p');
