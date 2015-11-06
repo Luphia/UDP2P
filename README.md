@@ -8,8 +8,8 @@ npm install udp2p
 
 ## Quick start
 ```node
-var udp2p = require('./index.js');
-client = new udp2p();
+var udp2p = require('udp2p');
+var client = new udp2p();
 
 client.connect(function () {
   client.fetchClient(function(e, d) {
