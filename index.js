@@ -2,7 +2,7 @@
 
 // start server
 var udp2p = require('./index.js');
-var server = new udp2p({server: true});
+var server = new udp2p({port: 2266});
 
 // start client
 var udp2p = require('./index.js');
@@ -11,12 +11,13 @@ var server = { address: '127.0.0.1', port: 2266 };
 
 client.connect(server, function () {
   client.fetchClient(function(e, d) {
-    var c = d.pop().name;
-    console.log(c);
-    client.peerTo(c, function (ee, dd) {
-      console.log(dd);
-      client.tunnelMsg({message: 'Hello, ' + c}, dd, function () {});
-    });
+    d.map(function(v) {
+      var c = v.name;
+      client.peerTo(c, function (ee, dd) {
+        console.log(dd);
+        client.tunnelMsg({message: 'Hello, ' + c}, dd, function () {});
+      });
+    })
   });
 });
 
@@ -29,7 +30,7 @@ var os = require('os'),
     dvalue = require('dvalue');
 
 var server = {
-  address: 'laria.space',
+  address: 'tracker.cc-wei.com',
   port: 2266
 };
 
@@ -141,14 +142,9 @@ udp2p.prototype.init = function (config) {
 
   // 0: server, 1: client
   this.mode = config.server? 0: 1;
-  if(config.server) {
-    this.startServer(config);
-  }
-  else {
-    this.listen(undefined, function (err, data) {
-      self.info.port = data;
-    });
-  }
+  this.listen(config.port, function (err, data) {
+    self.info.port = data;
+  });
 };
 
 udp2p.prototype.get = function (key) {
@@ -215,7 +211,10 @@ udp2p.prototype.getStatus = function () {
 udp2p.prototype.execMessage = function (msg, peer) {
   try {
     msg = JSON.parse(msg);
+    peer.name = msg._from;
+    console.log('--- get %s from %s', JSON.stringify(msg), JSON.stringify(peer)); //--
     switch (msg.type) {
+      // for client mode
       case 'clientList':
         this.done(msg._id, msg.clientList);
         break;
@@ -231,8 +230,65 @@ udp2p.prototype.execMessage = function (msg, peer) {
         this.addClient(client);
         this.punch(client, function () {});
         break;
+
+      // for server mode
+      case 'register':
+        var node = {
+            name: msg.name,
+            connections: {
+              local: msg.linfo,
+              public: peer
+            },
+            timestamp: new Date() / 1
+        };
+        this.addClient(node);
+        break;
+      case 'connect':
+        var couple = [ this.getClient(msg._from), this.getClient(msg.to) ]
+        for (var i=0; i<couple.length; i++) {
+          if (!couple[i]) { break; }
+        }
+        for (var i=0; i<couple.length; i++) {
+          var message = this.translate({
+            _id: msg._id,
+            type: 'connection',
+            client: couple[(i+1) % couple.length],
+          });
+          this.send(message, couple[i].connections.public, function () {});
+        }
+        break;
+      case 'fetchClient':
+        var message = this.translate({
+          _id: msg._id,
+          type: 'clientList',
+          from: peer
+        });
+        this.send(message, peer, function() {});
+        break;
+
       default:
-        console.log('Message from %s: %s', msg._from, msg.message);//--
+        if(msg.message) {
+          console.log('++++++ Message from %s: %s', msg._from, msg.message);
+          var message = { message: 'Hello, %s' + msg._from };
+          var self = this;
+          setTimeout(function () {
+            self.peerMsg(message, msg._from, function () {});
+          }, 1000);
+        }
+    }
+
+    // every message as heartbeat
+    if (msg._from !== undefined) {
+      var id = msg._from;
+      if(this.getClient(id)) {
+        delete peer.name;
+        this.setClient(id, {
+          connections: {
+            public: peer
+          },
+          timestamp: new Date() / 1
+        });
+      }
     }
   }
   catch (err) {
@@ -247,6 +303,7 @@ udp2p.prototype.translate = function (cmd) {
     _from: this.get('name')
   };
   switch (cmd.type) {
+    // for client mode
     case 'register':
       message.type = 'register';
       message.name = this.get('name');
@@ -255,8 +312,8 @@ udp2p.prototype.translate = function (cmd) {
         port: this.info.port
       };
       break;
-    case 'clientList':
-      message.type = 'clientList';
+    case 'fetchClient':
+      message.type = 'fetchClient';
       break;
     case 'connect':
       message.type = 'connect';
@@ -270,6 +327,22 @@ udp2p.prototype.translate = function (cmd) {
       message.type = 'ack';
       break;
     case 'heartbeat':
+      break;
+
+    // for server mode
+    case 'connection':
+      message.type = 'connection';
+      message.client = cmd.client;
+      break;
+    case 'clientList':
+      message.type = 'clientList';
+      message.clientList = [];
+      var list = this.getClientList();
+      for(var k in list) {
+        if(new Date() - list[k].timestamp < (waitingRate * period) && list[k].name != cmd.from.name && (list[k].connections.public.address != cmd.from.address || list[k].connections.public.port != cmd.from.port)) {
+          message.clientList.push(list[k]);
+        }
+      }
       break;
     default:
   }
@@ -285,6 +358,7 @@ udp2p.prototype.regist = function (server, cb) {
 // need to link to tracker first
 udp2p.prototype.connect = function (node, cb) {
   var self = this;
+  if(arguments.length == 1 && typeof(node) == 'function') { cb = arguments[0]; node = undefined; }
   server = dvalue.default(node, server);
 
   this.start(function() {
@@ -321,7 +395,7 @@ udp2p.prototype.sendHeartbeat = function (server) {
 udp2p.prototype.fetchClient = function (cb) {
   cb = dvalue.default(cb, function () {});
   var self = this;
-  var msg = self.translate('clientList');
+  var msg = self.translate('fetchClient');
   this.addJob(msg._id, 1, function (err, data) {
       data.map(function (v) {
         self.addClient(v);
@@ -331,6 +405,19 @@ udp2p.prototype.fetchClient = function (cb) {
   this.send(msg, server, function () {});
 };
 
+udp2p.prototype.setClient = function (name, data) {
+  if((this.clientIndex[name] > -1)) {
+    var newValue = dvalue.default(data, this.clients[this.clientIndex[name]]);
+    this.clients[this.clientIndex[name]] = newValue;
+  }
+  else {
+    data.name = name;
+    this.addClient(data);
+  }
+};
+udp2p.prototype.getClient = function (name) {
+  return (this.clientIndex[name] > -1)? dvalue.clone(this.clients[this.clientIndex[name]]): undefined;
+};
 udp2p.prototype.getClientList = function () {
   return dvalue.clone(this.clients);
 };
@@ -378,7 +465,7 @@ udp2p.prototype.punch = function (client, cb) {
   if(!this.isPunching(client.name)) {
     var index = this.clientIndex[client.name];
     this.clients[index].punching = true;
-    var message = this.translate({ type: 'punch', target: client });
+    var message = this.translate({ _id: ev, type: 'punch', target: client });
     this.doUntil(ev, function () {
       for(var k in client.connections) {
         self.send(message, client.connections[k], function () {});
@@ -387,9 +474,13 @@ udp2p.prototype.punch = function (client, cb) {
   }
 };
 
+udp2p.prototype.sendAck = function (msg, peer) {
+  var message = this.translate({ _id: msg._id, type: 'ack' });
+  this.send(message, peer, function () {});
+};
 udp2p.prototype.getAck = function (msg, peer) {
   var client = msg._from;
-  var ev = 'punch_' + client;
+  var ev = msg._id;
   var index = this.clientIndex[client];
   this.clients[index].ack = true;
   this.clients[index].tunnel = peer;
@@ -400,8 +491,8 @@ udp2p.prototype.peerTo = function (client, cb) {
   cb = dvalue.default(cb, function () {});
   var self = this;
   if(this.tunnelReady(client)) {
-    var node = this.clients[this.clientIndex[client]];
-    cb(undefined, node);
+    var tunnel = this.getTunnel(client);
+    cb(undefined, tunnel);
   }
   else {
     var msg = self.translate({ type: 'connect', target: client });
@@ -432,6 +523,7 @@ udp2p.prototype.send = function (msg, peer, cb) {
   this.udp.send(data, 0, data.length, peer.port, peer.address, function(err, bytes) {
     if(typeof(cb) == 'function') { cb(); }
   });
+  console.log('--- send %s to %s', JSON.stringify(msg), JSON.stringify(peer));
 };
 
 udp2p.prototype.initEvent = function (event) {
@@ -486,93 +578,6 @@ udp2p.prototype.cleanEvent = function (event) {
 };
 udp2p.prototype.cbReturn = function (err, data, cb) {
 	cb.map(function (f) {if(typeof f == 'function') f(err, data); });
-};
-
-udp2p.prototype.startServer = function (options) {
-  options = dvalue.default(options, {
-    port: 2266
-  });
-
-  var udp_matchmaker = dgram.createSocket('udp4');
-  var clients = {};
-
-  udp_matchmaker.on('listening', function() {
-    var address = udp_matchmaker.address();
-    console.log('# listening [%s:%s]', address.address, address.port);
-  });
-
-  udp_matchmaker.on('message', function(data, rinfo) {
-		delete rinfo.size;
-    try {
-      data = JSON.parse(data);
-    } catch (e) {
-      return console.log('! Couldn\'t parse data (%s):\n%s', e, data);
-    }
-    if (data.type == 'register') {
-      clients[data.name] = {
-          name: data.name,
-          connections: {
-            local: data.linfo,
-            public: rinfo
-          },
-					timestamp: new Date() / 1
-      };
-      console.log('# Client registered: %s@[%s:%s | %s:%s]', data.name,
-                  rinfo.address, rinfo.port, data.linfo.address, data.linfo.port);
-    }
-		else if (data.type == 'connect') {
-      var couple = [ clients[data.from], clients[data.to] ]
-      for (var i=0; i<couple.length; i++) {
-        if (!couple[i]) return console.log('Client unknown!');
-      }
-
-      for (var i=0; i<couple.length; i++) {
-        send(couple[i].connections.public.address, couple[i].connections.public.port, {
-					_id: data._id,
-          type: 'connection',
-          client: couple[(i+1)%couple.length],
-        });
-      }
-    }
-		else if (data.type == 'clientList') {
-			var response = {
-				_id: data._id,
-				type: 'clientList',
-				clientList: []
-			}
-			var list = dvalue.clone(clients);
-			for(var k in list) {
-				if(new Date() - list[k].timestamp < (waitingRate * period) && (list[k].connections.public.address != rinfo.address || list[k].connections.public.port != rinfo.port)) {
-					response.clientList.push(list[k]);
-				}
-			}
-			send(rinfo.address, rinfo.port, response);
-		}
-
-    // every message as heartbeat
-    if (data._from !== undefined) {
-      var id = data._from;
-      if(typeof(clients[id]) == 'object') {
-        clients[id].connections.public = rinfo;
-        clients[id].timestamp = new Date() / 1;
-      }
-    }
-  });
-
-  var send = function(host, port, msg, cb) {
-    var data = new Buffer(JSON.stringify(msg));
-    udp_matchmaker.send(data, 0, data.length, port, host, function(err, bytes) {
-      if (err) {
-        udp_matchmaker.close();
-        console.log('# stopped due to error: %s', err);
-      } else {
-        console.log('# sent '+msg.type);
-        if (cb) cb();
-      }
-    });
-  }
-
-  udp_matchmaker.bind(options.port);
 };
 
 module.exports = udp2p;
