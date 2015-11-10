@@ -8,7 +8,8 @@ var server = new udp2p({port: 2266});
 var udp2p = require('./index.js');
 client = new udp2p();
 var server = { address: '127.0.0.1', port: 2266 };
-
+client.get('name');
+client.info;
 client.connect(server, function () {
   client.fetchClient(function(e, d) {
     d.map(function(v) {
@@ -114,11 +115,12 @@ udp2p.prototype.init = function (config) {
   this.clients = [];
   this.clientIndex = {};
   this.clientTunnel = {};
-  this.tunnels = [];
+  this.tunnels = {};
 
   this.waiting = {};
   this.result = {};
   this.callback = {};
+  this.locks = {};
 
   this.isReady = false;
   this.isStart = false;
@@ -222,18 +224,21 @@ udp2p.prototype.execMessage = function (msg, peer) {
       case 'openTunnel':
         var client = msg.client;
         this.openTunnel(function(err, tunnel) {
-          self.setTunnel(client, tunnel);
+          self.setTunnel(client.name, tunnel);
           var message = self.translate({
             type: 'readyConnect',
             target: client.name
           });
-          self.sendBy(msg, tunnel, peer, function () {});
+          self.sendBy(message, tunnel, peer, function () {});
           self.punch(client, function () {});
         });
         break;
       case 'connection':
+console.log('get connections');
         var client = msg.client;
+console.log('add', client);
         this.addClient(client);
+console.log('punch', client);
         this.punch(client, function () {});
         break;
 
@@ -250,34 +255,32 @@ udp2p.prototype.execMessage = function (msg, peer) {
         this.addClient(node);
         break;
       case 'connect':
-console.log(11111111);
         var target = this.getClient(msg.to).connections.public;
         var client = this.getClient(msg._from);
-console.log(11111111);
         client.connections.public = peer;
         client.connections.local.port = peer.port;
 console.log(client);
+console.log(this.getClient(msg._from));
         var message = this.translate({
           _id: msg._id,
           type: 'openTunnel',
           client: client
         });
-console.log(message);
         this.send(message, target, function () {});
         break;
       case 'readyConnect':
-console.log(11111111);
         var target = this.getClient(msg.to).connections.public;
+console.log('%%%');
+console.log(target);
         var client = this.getClient(msg._from);
-console.log(11111111);
         client.connections.public = peer;
         client.connections.local.port = peer.port;
-console.log(client);
         var message = this.translate({
           _id: msg._id,
           type: 'connection',
           client: client
         });
+console.log('%%%');
 console.log(message);
         this.send(message, target, function () {});
         break;
@@ -291,25 +294,22 @@ console.log(message);
         break;
 
       default:
-        if(msg.message) {
-          console.log('++++++ Message from %s: %s', msg._from, msg.message);
-          var message = { message: 'Hello, %s' + msg._from };
-          var self = this;
-          setTimeout(function () {
-            self.peerMsg(message, msg._from, function () {});
-          }, 1000);
-        }
     }
 
     // every message as heartbeat
-    if (msg._from !== undefined) {
-      var id = msg._from;
-      if(this.getClient(id)) {
+    var id = msg._from;
+    if (msg._from !== undefined && this.getClient(id)) {
+      if(msg.type != 'connect' && msg.type != 'readyConnect') {
         delete peer.name;
         this.setClient(id, {
           connections: {
             public: peer
           },
+          timestamp: new Date() / 1
+        });
+      }
+      else {
+        this.setClient(id, {
           timestamp: new Date() / 1
         });
       }
@@ -455,6 +455,14 @@ udp2p.prototype.getClientList = function () {
 };
 
 udp2p.prototype.addClient = function (client) {
+  if(this.isLock(client.name)) {
+    var self = this;
+    setTimeout(function () {
+      self.addClient(client);
+    }, 10);
+    return;
+  }
+  this.lock(client.name);
   client = dvalue.default(client, {
     "name": undefined,
     "connections": {
@@ -472,6 +480,7 @@ udp2p.prototype.addClient = function (client) {
   if(!this.clientIndex[client.name]) {
     this.clientIndex[client.name] = (this.clients.push(client) - 1);
   }
+  this.unlock(client.name);
   return this.clientIndex[client.name];
 };
 
@@ -521,27 +530,19 @@ udp2p.prototype.openTunnel = function (cb) {
       console.log('--- get %s from %s', JSON.stringify(msg), JSON.stringify(peer)); //--
       switch (msg.type) {
         case 'punch':
-          var message = this.translate({ _id: msg._id, type: 'ack' });
-          this.send(message, peer);
+          var message = self.translate({ _id: msg._id, type: 'ack' });
+          self.sendBy(message, tunnel, peer, function() {});
           break;
         case 'ack':
-          this.getAck(msg, peer);
-          break;
-        case 'connection':
-          var client = msg.client;
-          this.addClient(client);
-          this.punch(client, function () {});
+          self.getAck(msg, peer);
           break;
 
         default:
-          if(msg.message) {
-            console.log('++++++ Message from %s: %s', msg._from, msg.message);
-            var message = { message: 'Hello, %s' + msg._from };
-            var self = this;
-            setTimeout(function () {
-              self.peerMsg(message, msg._from, function () {});
-            }, 1000);
-          }
+          console.log('++++++ Message from %s: %s', msg._from, JSON.stringify(msg));
+          var message = { message: 'Hello, ' + msg._from };
+          setTimeout(function () {
+            self.peerMsg(message, msg._from, function () {});
+          }, 1000);
       }
     }
     catch (err) {
@@ -558,9 +559,8 @@ udp2p.prototype.punch = function (client, cb) {
   var ev = 'punch_' + client.name;
   this.addJob(ev, 0, cb);
   if(!this.isPunching(client.name)) {
-    var index = this.clientIndex[client.name];
     var tunnel = this.getTunnel(client.name);
-    this.clients[index].punching = true;
+    this.setClient(client.name, {punching: true});
     var message = this.translate({ _id: ev, type: 'punch', target: client });
     this.doUntil(ev, function () {
       for(var k in client.connections) {
@@ -570,16 +570,11 @@ udp2p.prototype.punch = function (client, cb) {
   }
 };
 
-udp2p.prototype.sendAck = function (msg, peer) {
-  var message = this.translate({ _id: msg._id, type: 'ack' });
-  this.send(message, peer, function () {});
-};
 udp2p.prototype.getAck = function (msg, peer) {
   var client = msg._from;
   var ev = msg._id;
-  var index = this.clientIndex[client];
-  this.clients[index].ack = true;
-  this.clients[index].tunnel = peer;
+  this.setClient(client, {ack: true});
+  this.setClientTunnel(client, peer);
   this.done(ev, peer);
 };
 
@@ -590,9 +585,7 @@ udp2p.prototype.peerTo = function (client, cb) {
     cb(undefined, true);
   }
   else {
-console.log(client);
     var msg = self.translate({ type: 'connect', target: client });
-console.log(msg);
     var ev = 'punch_' + client;
     this.addJob(ev, 0, cb);
     this.openTunnel(function (err, tunnel) {
@@ -624,11 +617,12 @@ udp2p.prototype.send = function (msg, peer, cb) {
   if(!!msg.type) console.log('--- send %s: %s to %s', msg.type, JSON.stringify(msg), JSON.stringify(peer));
 };
 udp2p.prototype.sendBy = function (msg, tunnel, peer, cb) {
+  if(typeof(msg) == 'object') { msg._from = this.get('name'); }
   var data = new Buffer(JSON.stringify(msg));
   tunnel.send(data, 0, data.length, peer.port, peer.address, function(err, bytes) {
     if(typeof(cb) == 'function') { cb(); }
   });
-  console.log('--- send %s by port %s: %s to %s', msg.type, tunnel.address().port, JSON.stringify(msg), JSON.stringify(peer));
+  console.log('--- send by port %s: %s to %s', tunnel.address().port, JSON.stringify(msg), JSON.stringify(peer));
 };
 
 udp2p.prototype.initEvent = function (event) {
@@ -683,6 +677,17 @@ udp2p.prototype.cleanEvent = function (event) {
 };
 udp2p.prototype.cbReturn = function (err, data, cb) {
 	cb.map(function (f) {if(typeof f == 'function') f(err, data); });
+};
+
+udp2p.prototype.lock = function (ev) {
+  ev = dvalue.default(ev, '_lock');
+  this.locks[ev] = true;
+};
+udp2p.prototype.unlock = function (ev) {
+  delete this.locks[ev];
+};
+udp2p.prototype.isLock = function (ev) {
+  return !!this.locks[ev];
 };
 
 module.exports = udp2p;
