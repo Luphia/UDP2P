@@ -118,6 +118,7 @@ udp2p.prototype.init = function (config) {
   this.tunnels = {};
 
   this.waiting = {};
+  this.timeout = {};
   this.result = {};
   this.callback = {};
   this.locks = {};
@@ -234,11 +235,8 @@ udp2p.prototype.execMessage = function (msg, peer) {
         });
         break;
       case 'connection':
-console.log('get connections');
         var client = msg.client;
-console.log('add', client);
         this.addClient(client);
-console.log('punch', client);
         this.punch(client, function () {});
         break;
 
@@ -259,8 +257,6 @@ console.log('punch', client);
         var client = this.getClient(msg._from);
         client.connections.public = peer;
         client.connections.local.port = peer.port;
-console.log(client);
-console.log(this.getClient(msg._from));
         var message = this.translate({
           _id: msg._id,
           type: 'openTunnel',
@@ -270,8 +266,6 @@ console.log(this.getClient(msg._from));
         break;
       case 'readyConnect':
         var target = this.getClient(msg.to).connections.public;
-console.log('%%%');
-console.log(target);
         var client = this.getClient(msg._from);
         client.connections.public = peer;
         client.connections.local.port = peer.port;
@@ -280,8 +274,6 @@ console.log(target);
           type: 'connection',
           client: client
         });
-console.log('%%%');
-console.log(message);
         this.send(message, target, function () {});
         break;
       case 'fetchClient':
@@ -413,15 +405,8 @@ udp2p.prototype.heartbeat = function () {
 };
 udp2p.prototype.sendHeartbeat = function (server) {
   var self = this;
-  if(Array.isArray(server)) {
-    server.map(function (v) {
-      self.sendHeartbeat(v);
-    });
-  }
-  else {
-    var msg = this.translate('heartbeat');
-    this.send(msg, server, function () {})
-  }
+  var msg = this.translate('heartbeat');
+  this.send(msg, server, function () {});
 };
 
 udp2p.prototype.fetchClient = function (cb) {
@@ -566,7 +551,7 @@ udp2p.prototype.punch = function (client, cb) {
       for(var k in client.connections) {
         self.sendBy(message, tunnel, client.connections[k], function () {});
       }
-    }, 1000);
+    }, 1000, 10000);
   }
 };
 
@@ -642,10 +627,11 @@ udp2p.prototype.addJob = function (event, n, callback) {
 		this.callback[event].push(callback);
 	}
 };
-udp2p.prototype.doUntil = function (event, job, interval) {
+udp2p.prototype.doUntil = function (event, job, interval, timeout) {
   interval = dvalue.default(interval, 1000);
+  if(timeout > 0) { this.timeout[event] = new Date() / 1 + timeout; }
   var self = this;
-  if(this.waiting[event] > 0) {
+  if(this.waiting[event] > 0 && new Date() / 1 > this.timeout[event]) {
     job();
 
     setTimeout(function () {
