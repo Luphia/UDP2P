@@ -15,10 +15,7 @@ client.connect(function () {
   client.fetchClient(function(e, d) {
     d.map(function(v) {
       var c = v.name;
-      client.peerTo(c, function (ee, dd) {
-        console.log(dd);
-        client.tunnelMsg({message: 'Hello, ' + c}, dd, function () {});
-      });
+      client.peerMsg({message: 'Hello, ' + c}, c, function (ee, dd) {});
     })
   });
 });
