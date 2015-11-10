@@ -19,6 +19,20 @@ client.connect(server, function () {
   });
 });
 
+var udp2p = require('udp2p');
+client = new udp2p();
+var server = { address: 'tracker.cc-wei.com', port: 2266 };
+client.get('name');
+client.info;
+client.connect(server, function () {
+  client.fetchClient(function(e, d) {
+    d.map(function(v) {
+      var c = v.name;
+      client.peerMsg({message: 'Hello UDP2P!'}, c, function () {});
+    })
+  });
+});
+
  */
 
 var os = require('os'),
@@ -631,9 +645,9 @@ udp2p.prototype.doUntil = function (event, job, interval, timeout) {
   interval = dvalue.default(interval, 1000);
   if(timeout > 0) { this.timeout[event] = new Date() / 1 + timeout; }
   var self = this;
-  if(this.waiting[event] > 0 && new Date() / 1 > this.timeout[event]) {
+  if(this.waiting[event] > 0) {
+    if(this.timeout[event] > 0 && new Date() / 1 > this.timeout[event]) { return; }
     job();
-
     setTimeout(function () {
       self.doUntil(event, job, interval);
     }, interval);
