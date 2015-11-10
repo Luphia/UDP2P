@@ -20,6 +20,9 @@ client.connect(server, function () {
 });
 
 var udp2p = require('udp2p');
+var server = new udp2p({port: 2266});
+
+var udp2p = require('udp2p');
 client = new udp2p();
 var server = { address: 'tracker.cc-wei.com', port: 2266 };
 client.get('name');
@@ -529,6 +532,7 @@ udp2p.prototype.openTunnel = function (cb) {
       console.log('--- get %s from %s', JSON.stringify(msg), JSON.stringify(peer)); //--
       switch (msg.type) {
         case 'punch':
+          self.getPunch(msg, peer);
           var message = self.translate({ _id: msg._id, type: 'ack' });
           self.sendBy(message, tunnel, peer, function() {});
           break;
@@ -569,6 +573,13 @@ udp2p.prototype.punch = function (client, cb) {
   }
 };
 
+udp2p.prototype.getPunch = function (msg, peer) {
+  var client = msg._from;
+  var ev = 'punch_' + client;
+  this.setClient(client, {ack: true});
+  this.setClientTunnel(client, peer);
+  this.done(ev, peer);
+};
 udp2p.prototype.getAck = function (msg, peer) {
   var client = msg._from;
   var ev = msg._id;
