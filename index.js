@@ -15,24 +15,7 @@ client.connect(server, function () {
     d.map(function(v) {
       var c = v.name;
       client.peerMsg({message: 'Hello UDP2P!'}, c, function () {});
-    })
-  });
-});
-
-var udp2p = require('udp2p');
-var server = new udp2p({port: 2266});
-
-var udp2p = require('udp2p');
-client = new udp2p();
-var server = { address: 'tracker.cc-wei.com', port: 2266 };
-client.get('name');
-client.info;
-client.connect(server, function () {
-  client.fetchClient(function(e, d) {
-    d.map(function(v) {
-      var c = v.name;
-      client.peerMsg({message: 'Hello UDP2P!'}, c, function () {});
-    })
+    });
   });
 });
 
@@ -41,6 +24,7 @@ client.connect(server, function () {
 var os = require('os'),
     dgram = require('dgram'),
     net = require('net'),
+    textype = require('textype'),
     raid2x = require('raid2x'),
     dvalue = require('dvalue');
 
@@ -123,6 +107,46 @@ udp2p.fetchInfo = function (cb) {
   this.fetchIP(done);
 
   done();
+};
+
+udp2p.toBuffer = function (data) {
+  var type = textype.typeOf(data);
+  var rs;
+  switch(type) {
+    case 1: // Buffer
+      var name = new Buffer(data._name || '');
+      rs = new Buffer(data.length + name.length + 2).fill(0);
+      rs[0] = 1;
+      rs[1] = name.length + 2;
+      data.copy(rs, rs[1], 0);
+      break;
+    case 2: // JSON
+      data = new Buffer(JSON.stringify(data));
+      rs = new Buffer(data.length + 2).fill(0);
+      rs[0] = 2;
+      rs[1] = 2;
+      data.copy(rs, rs[1], 0);
+      break;
+    default:
+  }
+  return rs;
+};
+
+udp2p.parseBuffer = function (buffer) {
+  if(!Buffer.isBuffer(buffer)) { return false; }
+  var type = buffer[0];
+  var data = buffer.slice(buffer[1]);
+  switch(type) {
+    case 1: // Buffer
+      data._name = buffer.slice(2, buffer[1]).toString();
+      break;
+    case 2: // JSON
+      data = JSON.parse(data);
+      break;
+    default:
+  }
+
+  return data;
 };
 
 // prototype function
@@ -231,7 +255,7 @@ udp2p.prototype.getStatus = function () {
 udp2p.prototype.execMessage = function (msg, peer) {
   var self = this;
   try {
-    msg = JSON.parse(msg);
+    msg = udp2p.parseBuffer(msg);
     peer.name = msg._from;
     if(msg.type) console.log('--- get %s: %s from %s', msg.type, JSON.stringify(msg), JSON.stringify(peer)); //--
     switch (msg.type) {
@@ -527,16 +551,18 @@ udp2p.prototype.openTunnel = function (cb) {
 
   tunnel.on('message', function (msg, peer) {
     try {
-      msg = JSON.parse(msg);
+      msg = udp2p.parseBuffer(msg);
       peer.name = msg._from;
       console.log('--- get %s from %s', JSON.stringify(msg), JSON.stringify(peer)); //--
       switch (msg.type) {
         case 'punch':
+          tunnel._target = msg._from;
           self.getPunch(msg, peer);
           var message = self.translate({ _id: msg._id, type: 'ack' });
           self.sendBy(message, tunnel, peer, function() {});
           break;
         case 'ack':
+          tunnel._target = msg._from;
           self.getAck(msg, peer);
           break;
 
@@ -618,9 +644,22 @@ udp2p.prototype.peerMsg = function (msg, client, cb) {
     });
   }
 };
+udp2p.prototype.peerFile = function (file, client, cb) {
+  var self = this;
+  if(this.tunnelReady(client)) {
+    var tunnel = this.getTunnel(client);
+    var peer = this.getClientTunnel(client);
+    this.sendBy(msg, tunnel, peer, cb);
+  }
+  else {
+    this.peerTo(client, function (err, data) {
+      self.peerMsg(msg, client, cb);
+    });
+  }
+};
 
 udp2p.prototype.send = function (msg, peer, cb) {
-  var data = new Buffer(JSON.stringify(msg));
+  var data = udp2p.toBuffer(msg);
   this.udp.send(data, 0, data.length, peer.port, peer.address, function(err, bytes) {
     if(typeof(cb) == 'function') { cb(); }
   });
@@ -628,7 +667,7 @@ udp2p.prototype.send = function (msg, peer, cb) {
 };
 udp2p.prototype.sendBy = function (msg, tunnel, peer, cb) {
   if(typeof(msg) == 'object') { msg._from = this.get('name'); }
-  var data = new Buffer(JSON.stringify(msg));
+  var data = udp2p.toBuffer(msg);
   tunnel.send(data, 0, data.length, peer.port, peer.address, function(err, bytes) {
     if(typeof(cb) == 'function') { cb(); }
   });
