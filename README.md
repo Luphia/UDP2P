@@ -79,7 +79,7 @@ client.on('message', function (data) {
 });
 
 client.on('file', function (data) {
-  var savePath = '/Users/luphia/Desktop/logo.png';
+  var savePath = '/Users/luphia/Desktop/' + data.name;
   console.log('recieve file [%s] from %s', data.from, data.name);
   data.r2x.save(savePath);
 });
