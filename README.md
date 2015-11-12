@@ -64,7 +64,23 @@ var message = {
 };
 
 var peer = client.getClientList().pop().name;
-client.peerMsg(message, peer, function(err, response) {
-  console.log('send to %s', peer);
+client.peerMsg(message, peer, function(err, response) {});
+```
+### Send file
+```node
+var filepath = '/Users/luphia/Documents/Workspace/Playground/logo.png';
+var peer = client.getClientList().pop().name;
+client.peerFile(filepath, peer, function(err, response) {});
+```
+### Setup event
+```node
+client.on('message', function (data) {
+  console.log('%s: %s', data.from, JSON.stringify(data.content));
+});
+
+client.on('file', function (data) {
+  var savePath = '/Users/luphia/Documents/Workspace/Playground/logo.png';
+  console.log('recieve file [%s] from %s', data.from, data.name);
+  data.r2x.save(savePath);
 });
 ```
