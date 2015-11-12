@@ -4,7 +4,23 @@
 var udp2p = require('./index.js');
 var server = new udp2p({port: 2266});
 
-// start client
+// start client1
+var udp2p = require('./index.js');
+client = new udp2p();
+var server = { address: '127.0.0.1', port: 2266 };
+client.get('name');
+client.info;
+client.connect(server, function () {});
+client.on('message', function (data) {
+  console.log('%s: %s', data.from, JSON.stringify(data.content));
+});
+client.on('file', function (data) {
+  var savePath = '/Users/luphia/Desktop/' + data.name;
+  console.log('recieve file [%s] from %s', data.from, data.name);
+  data.r2x.save(savePath);
+});
+
+// start client2
 var udp2p = require('./index.js');
 client = new udp2p();
 var server = { address: '127.0.0.1', port: 2266 };
@@ -14,7 +30,8 @@ client.connect(server, function () {
   client.fetchClient(function(e, d) {
     d.map(function(v) {
       var c = v.name;
-      client.peerMsg({message: 'Hello UDP2P!'}, c, function () {});
+      client.peerFile('/Users/luphia/Documents/Workspace/Playground/logo.png', c, function () {});
+      client.peerMsg({message: 'YO!'}, c, function () {});
     });
   });
 });
@@ -22,8 +39,10 @@ client.connect(server, function () {
  */
 
 var os = require('os'),
+    fs = require('fs'),
     dgram = require('dgram'),
     net = require('net'),
+    path = require('path'),
     textype = require('textype'),
     raid2x = require('raid2x'),
     dvalue = require('dvalue');
@@ -33,6 +52,7 @@ var server = {
   port: 2266
 };
 
+var sliceSize = 8192;
 var period = 10000;
 var waitingRate = 3;
 
@@ -118,6 +138,7 @@ udp2p.toBuffer = function (data) {
       rs = new Buffer(data.length + name.length + 2).fill(0);
       rs[0] = 1;
       rs[1] = name.length + 2;
+      name.copy(rs, 2, 0);
       data.copy(rs, rs[1], 0);
       break;
     case 2: // JSON
@@ -163,6 +184,18 @@ udp2p.prototype.init = function (config) {
   this.result = {};
   this.callback = {};
   this.locks = {};
+
+  this.tmpFile = {};
+
+  this.event = {
+    message: function (msg) {
+      console.log('Message from %s: %s', msg.from, JSON.stringify(msg.content));
+    },
+    file: function (msg) {
+      console.log('File from %s: %s', msg.from, msg.name);
+      msg.r2x.save('/Users/luphia/Desktop/' + msg.name);
+    }
+  }
 
   this.isReady = false;
   this.isStart = false;
@@ -210,6 +243,22 @@ udp2p.prototype.ready = function () {
   }
 };
 
+udp2p.prototype.on = function (ev, cb) {
+  switch(ev) {
+    case 'message':
+      if(typeof(cb) == 'function') {
+        this.event.message = cb;
+      }
+      break;
+    case 'file':
+      if(typeof(cb) == 'function') {
+        this.event.file = cb;
+      }
+      break;
+    default:
+  }
+};
+
 udp2p.prototype.start = function (todo, cb) {
   this.isStart = true;
   if(typeof(todo) == 'function') {
@@ -240,7 +289,7 @@ udp2p.prototype.listen = function (port, cb) {
     self.execMessage(msg, peer);
   });
   this.udp.on('error', function (err) {
-    console.log(err);
+    console.trace(err);
     bind();
   });
 
@@ -257,7 +306,7 @@ udp2p.prototype.execMessage = function (msg, peer) {
   try {
     msg = udp2p.parseBuffer(msg);
     peer.name = msg._from;
-    if(msg.type) console.log('--- get %s: %s from %s', msg.type, JSON.stringify(msg), JSON.stringify(peer)); //--
+    // if(msg.type) console.log('--- get %s: %s from %s', msg.type, JSON.stringify(msg), JSON.stringify(peer)); //--
     switch (msg.type) {
       // for client mode
       case 'clientList':
@@ -553,7 +602,6 @@ udp2p.prototype.openTunnel = function (cb) {
     try {
       msg = udp2p.parseBuffer(msg);
       peer.name = msg._from;
-      console.log('--- get %s from %s', JSON.stringify(msg), JSON.stringify(peer)); //--
       switch (msg.type) {
         case 'punch':
           tunnel._target = msg._from;
@@ -567,15 +615,30 @@ udp2p.prototype.openTunnel = function (cb) {
           break;
 
         default:
-          console.log('++++++ Message from %s: %s', msg._from, JSON.stringify(msg));
-          var message = { message: 'Hello, ' + msg._from };
-          setTimeout(function () {
-            self.peerMsg(message, msg._from, function () {});
-          }, 1000);
+          var recieveMsg = {
+            from: tunnel._target
+          };
+          if(msg._meta) { // initial file recieve
+            self.tmpFile[msg._name] = new raid2x(msg._meta);
+          }
+          else if(Buffer.isBuffer(msg)) { // recieve file shard
+            var r2x = self.tmpFile[msg._name];
+            if(r2x) {
+              if(r2x.importShard(msg) == 1) {
+                recieveMsg.name = r2x.attr.name;
+                recieveMsg.r2x = r2x;
+                self.event.file(recieveMsg);
+              }
+            }
+          }
+          else if(typeof(msg) == 'object') { // recieve msg
+            recieveMsg.content = msg;
+            self.event.message(recieveMsg);
+          }
       }
     }
     catch (err) {
-      // recieve file buffer
+      console.trace(err);
     }
   });
   tunnel.on('error', function (err) {});
@@ -649,11 +712,25 @@ udp2p.prototype.peerFile = function (file, client, cb) {
   if(this.tunnelReady(client)) {
     var tunnel = this.getTunnel(client);
     var peer = this.getClientTunnel(client);
-    this.sendBy(msg, tunnel, peer, cb);
+    var r2x = new raid2x(file);
+    r2x.setSliceSize(sliceSize - 8);
+    var name = dvalue.randomID();
+    var msg = {
+      _name: name,
+      _meta: r2x.getMeta(true)
+    };
+    var sliceCount = msg._meta.sliceCount;
+    self.peerMsg(msg, client, function () {
+      for(var i = 0; i < sliceCount; i++) {
+        var buffer = r2x.getShard(i);
+        buffer._name = name;
+        self.sendBy(buffer, tunnel, peer, function () {});
+      }
+    });
   }
   else {
     this.peerTo(client, function (err, data) {
-      self.peerMsg(msg, client, cb);
+      self.peerFile(file, client, cb);
     });
   }
 };
@@ -663,15 +740,14 @@ udp2p.prototype.send = function (msg, peer, cb) {
   this.udp.send(data, 0, data.length, peer.port, peer.address, function(err, bytes) {
     if(typeof(cb) == 'function') { cb(); }
   });
-  if(!!msg.type) console.log('--- send %s: %s to %s', msg.type, JSON.stringify(msg), JSON.stringify(peer));
+  // if(!!msg.type) console.log('--- send %s: %s to %s', msg.type, JSON.stringify(msg), JSON.stringify(peer));
 };
 udp2p.prototype.sendBy = function (msg, tunnel, peer, cb) {
-  if(typeof(msg) == 'object') { msg._from = this.get('name'); }
+  if(!!msg.type) { msg._from = this.get('name'); }
   var data = udp2p.toBuffer(msg);
   tunnel.send(data, 0, data.length, peer.port, peer.address, function(err, bytes) {
     if(typeof(cb) == 'function') { cb(); }
   });
-  console.log('--- send by port %s: %s to %s', tunnel.address().port, JSON.stringify(msg), JSON.stringify(peer));
 };
 
 udp2p.prototype.initEvent = function (event) {
