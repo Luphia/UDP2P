@@ -1,6 +1,6 @@
 {
   "name": "udp2p",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "P2P connection with UDP hole punching",
   "main": "index.js",
   "scripts": {

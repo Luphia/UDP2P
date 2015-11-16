@@ -15,7 +15,7 @@ server.on('file', function (data) {
 // start client1
 var udp2p = require('./index.js');
 client = new udp2p({name: 'client1'});
-var server = { address: '127.0.0.1', port: 2266 };
+var server = { address: 'laria.space', port: 2266 };
 client.get('name');
 client.info;
 client.connect(server, function () {});
@@ -32,7 +32,7 @@ client.on('file', function (data) {
 // start client2
 var udp2p = require('./index.js');
 client = new udp2p({name: 'client2'});
-var server = { address: '127.0.0.1', port: 2266 };
+var server = { address: 'laria.space', port: 2266 };
 client.get('name');
 client.info;
 client.connect(server, function () {
@@ -627,10 +627,8 @@ udp2p.prototype.addClient = function (client) {
 };
 
 udp2p.prototype.getClientTunnel = function (client) {
-  var tunnel;
-  var node = this.getClient(client) || {};
-  if(node.public) {
-    tunnel = node.connections.public;
+  if(this.isPublic(client)) {
+    tunnel = this.getClient(client).connections.public;
   }
   else {
     tunnel = this.clientTunnel[client];
@@ -648,9 +646,7 @@ udp2p.prototype.setClientTunnel = function (client, tunnel) {
 };
 
 udp2p.prototype.getTunnel = function (client) {
-  var tunnel;
-  var node = this.getClient(client) || {};
-  if(node.public) {
+  if(this.isPublic(client)) {
     tunnel = this.udp;
   }
   else {
@@ -667,7 +663,12 @@ udp2p.prototype.setTunnel = function (client, tunnel) {
 };
 
 udp2p.prototype.tunnelReady = function (client) {
-  return this.getClient(client).public || (!!this.clientTunnel[client] && !!this.tunnels[client]);
+  return this.isPublic(client) || (!!this.clientTunnel[client] && !!this.tunnels[client]);
+};
+
+udp2p.prototype.isPublic = function (client) {
+  var node =  this.getClient(client) || {};
+  return !!node.public;
 };
 
 udp2p.prototype.isPunching = function (client) {
