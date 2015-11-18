@@ -618,6 +618,15 @@ udp2p.prototype.findClient = function (peer) {
 udp2p.prototype.getClientList = function () {
   return dvalue.clone(this.clients);
 };
+udp2p.prototype.getPublicClient = function () {
+  var list = [];
+  this.clients.map(function (v) {
+    if(v.public) {
+      list.push(dvalue.clone(v));
+    }
+  });
+  return list;
+};
 
 udp2p.prototype.addClient = function (client) {
   if(this.isLock(client.name)) {
@@ -838,6 +847,12 @@ udp2p.prototype.peerMsg = function (msg, client, cb) {
       self.peerMsg(msg, client, cb);
     });
   }
+};
+udp2p.prototype.request = function (msg, client, cb) {
+
+};
+udp2p.prototype.response = function (msg, oldmsg, cb) {
+
 };
 udp2p.prototype.peerFile = function (file, client, cb) {
   var self = this;
