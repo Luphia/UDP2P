@@ -206,6 +206,7 @@ udp2p.prototype.init = function (config) {
   this.locks = {};
 
   this.tmpFile = {};
+  this.sendingFile = {};
 
   this.event = {
     message: function (msg) {
@@ -514,6 +515,11 @@ udp2p.prototype.translate = function (cmd) {
       break;
     case 'heartbeat':
       break;
+    case 'resend':
+      message.type = 'resend';
+      message.name = cmd.name;
+      message.list = cmd.list;
+      break;
 
     // for server mode
     case 'openTunnel':
@@ -729,14 +735,9 @@ udp2p.prototype.onPeerMsg = function (msg, sender) {
     from: sender
   };
   if(msg._meta) { // initial file recieve
-console.log('get metadata', msg._meta);
-    this.tmpFile[msg._name] = new raid2x(msg._meta);
-    if(msg._response) {
-      this.tmpFile[msg._name]._response = msg._response;
-    }
+    this.fileReceive(msg, sender);
   }
   else if(Buffer.isBuffer(msg)) { // recieve file shard
-console.log('get buffer');
     var r2x = this.tmpFile[msg._name];
     if(r2x) {
       if(r2x.importShard(msg) == 1) {
@@ -745,7 +746,7 @@ console.log('get buffer');
         recieveMsg._response = r2x._response;
         this.messageEvent(recieveMsg);
       }
-console.log(r2x.getProgress());
+console.log('%s: %d %', msg._name, parseInt(r2x.getProgress() * 10000) / 100); //--
     }
   }
   else if(typeof(msg) == 'object') { // recieve msg
@@ -755,6 +756,59 @@ console.log(r2x.getProgress());
     this.messageEvent(recieveMsg);
   }
 };
+udp2p.prototype.fileReceive = function (msg, sender) {
+  var self = this;
+  var r2x = new raid2x(msg._meta);
+  r2x._sender = sender;
+  r2x._name = msg._name;
+  this.tmpFile[msg._name] = r2x;
+  if(msg._response) {
+    this.tmpFile[msg._name]._response = msg._response;
+  }
+
+  this.checkFileReceive();
+};
+udp2p.prototype.checkFileReceive = function () {
+  if(this._checkFileReceive) { return; }
+  var self = this;
+  this._checkFileRecive = true;
+  var total = 0;
+  for(var k in this.tmpFile) {
+    total ++;
+    var f = this.tmpFile[k];
+    var progress = f.getProgress();
+    if (progress < 1 && f.update > 0 && new Date() / 1 - f.update > 5000) { // ask resend
+      self.askResend(f);
+    }
+    else if (progress == 1 && new Date() / 1 - f.update > 300000) { // clean data after 5 min
+      f = null;
+      delete self.tmpFile[k];
+    }
+  }
+
+  if(total == 0) {
+    this._checkFileRecive = false;
+  }
+  else {
+    setTimeout(function () {
+      self._checkFileRecive = false;
+      self.checkFileReceive();
+    }, 30000);
+  }
+};
+udp2p.prototype.askResend = function (r2x) {
+  var list = r2x.getDownloadPlan().slice(0, 100);
+  var client = r2x._sender;
+  var message = this.translate({
+    type: 'resend',
+    name: r2x._name,
+    list: list
+  });
+  this.peerMsg(message, client, function () {
+    console.log('Ask %s to resend %s: %s', r2x._sender, r2x._name, list); //--
+  });
+};
+
 udp2p.prototype.openTunnel = function (cb) {
   var self = this;
   var tunnel = dgram.createSocket('udp4');
@@ -778,13 +832,16 @@ udp2p.prototype.openTunnel = function (cb) {
           tunnel._target = msg._from;
           self.getAck(msg, peer);
           break;
+        case 'resend':
+          self.resendFile(msg);
+          break;
 
         default:
           self.onPeerMsg(msg, tunnel._target);
       }
     }
     catch (err) {
-      console.trace(err);
+      console.log(err);
     }
   });
   tunnel.on('error', function (err) {});
@@ -916,13 +973,13 @@ udp2p.prototype.peerFile = function (file, client, cb) {
       _meta: r2x.getMeta(true)
     };
     var sliceCount = msg._meta.sliceCount;
+    this.sendingFile[name] = r2x;
+    r2x._receiver = client;
+
     self.peerMsg(msg, client, function () {
-console.log('send %s', msg);
+console.log('send %s', msg._name);//--
       for(var i = 0; i < sliceCount; i++) {
-var p = parseInt(Math.log10(i)); if(i % (Math.pow(10, p - 1)) < 1)  console.log('send %d', i);
-        var buffer = r2x.getShard(i);
-        buffer._name = name;
-        self.sendBy(buffer, tunnel, peer, function () {});
+        self.peerShard(name, r2x, i, tunnel, peer);
       }
     });
   }
@@ -931,6 +988,26 @@ var p = parseInt(Math.log10(i)); if(i % (Math.pow(10, p - 1)) < 1)  console.log(
       self.peerFile(file, client, cb);
     });
   }
+};
+udp2p.prototype.peerShard = function (name, r2x, i, tunnel, peer) {
+  var shard = r2x.getShard(i);
+  shard._name = name;
+  this.sendBy(shard, tunnel, peer, function () {
+    var p = parseInt(Math.log10(i)); if(i % (Math.pow(10, p - 1)) < 1) console.log('send %d', i);//--
+  });
+};
+udp2p.prototype.resendFile = function (msg) {
+  var self = this;
+  var name = msg.name;
+  var r2x = this.sendingFile[msg.name];
+  if(!r2x) { return; }
+  var tunnel = this.getTunnel(r2x._receiver);
+  var peer = this.getClientTunnel(r2x._receiver);
+
+  msg.list = dvalue.distinct(msg.list).slice(0, 100);
+  msg.list.map(function (v) {
+    self.peerShard(name, r2x, v, tunnel, peer);
+  });
 };
 
 udp2p.prototype.send = function (msg, peer, cb) {
@@ -953,12 +1030,12 @@ udp2p.prototype.tunnelSend = function (tunnel, job) {
     tunnel.busy = false;
     setTimeout(function () {
       self.keepGo(tunnel);
-    }, 100);
+    }, 10);
     if(typeof(cb) == 'function') { cb(); }
   });
 };
 udp2p.prototype.keepGo = function (tunnel) {
-  if(tunnel.busy) { return; }
+  //if(tunnel.busy) { return; }
   var job = tunnel.queue.splice(0, 1)[0];
   if(!!job) { this.tunnelSend(tunnel, job); }
 };

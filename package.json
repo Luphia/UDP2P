@@ -1,6 +1,6 @@
 {
   "name": "udp2p",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "P2P connection with UDP hole punching",
   "main": "index.js",
   "scripts": {
@@ -21,8 +21,8 @@
   },
   "homepage": "https://github.com/Luphia/UDP2P#readme",
   "dependencies": {
-    "dvalue": "^1.0.1",
-    "raid2x": "^0.1.12",
+    "dvalue": "^1.0.2",
+    "raid2x": "^0.1.16",
     "textype": "^1.0.3"
   }
 }
