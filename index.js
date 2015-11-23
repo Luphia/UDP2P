@@ -800,7 +800,7 @@ udp2p.prototype.checkFileReceive = function () {
     setTimeout(function () {
       self._checkFileRecive = false;
       self.checkFileReceive();
-    }, 10000);
+    }, period);
   }
 };
 udp2p.prototype.askResend = function (r2x) {
@@ -865,7 +865,7 @@ udp2p.prototype.punch = function (client, cb) {
       for(var k in client.connections) {
         self.sendBy(message, tunnel, client.connections[k], function () {});
       }
-    }, 1000, 10000, function () {
+    }, 1000, period, function () {
       if(!self.tunnelReady(client)) {
         var old = self.getTunnel(client.name);
         if(typeof(old.close) == 'function') { old.close(); }
@@ -880,13 +880,13 @@ udp2p.prototype.getPunch = function (msg, peer) {
   var client = msg._from;
   var ev = 'punch_' + client;
   this.setClient(client, {ack: true});
-  this.setClientTunnel(client, peer);
+  //this.setClientTunnel(client, peer);
 };
 udp2p.prototype.getAck = function (msg, peer) {
   var client = msg._from;
   var ev = msg._id;
   this.setClient(client, {ack: true});
-  this.setClientTunnel(client, peer);
+  //this.setClientTunnel(client, peer);
 };
 
 udp2p.prototype.peerTo = function (client, cb) {
@@ -995,10 +995,26 @@ udp2p.prototype.peerFile = function (file, client, cb) {
 udp2p.prototype.peerShard = function (name, r2x, i, tunnel, peer) {
   var shard = r2x.getShard(i);
   shard._name = name;
+  this.monitor(tunnel);
   this.sendBy(shard, tunnel, peer, function () {
-    var p = parseInt(Math.log10(i)); if(i % (Math.pow(10, p - 1)) < 1) console.log('send %d', i);//--
+    tunnel._traffic += r2x.attr.sliceSize;
   });
 };
+udp2p.prototype.monitor = function (tunnel) {
+  if(!tunnel) return;
+  tunnel._monitor = new Date() + 60000;
+  tunnel._traffic = tunnel._traffic || 0;
+  tunnel._update = tunnel._update || 0;
+  var pass = new Date() - tunnel._update;
+  console.log(pass, tunnel._update);
+  if(pass > 1000) {
+    traffic = parseInt(tunnel._traffic * 1000 / pass);
+    tunnel._traffic = 0;
+    tunnel._update = new Date();
+    console.log(traffic, bytes/s);
+  }
+}
+
 udp2p.prototype.resendFile = function (msg) {
   var self = this;
   var name = msg.name;
@@ -1042,8 +1058,6 @@ udp2p.prototype.keepGo = function (tunnel) {
   if(!!job) { this.tunnelSend(tunnel, job); }
 };
 udp2p.prototype.sendBy = function (msg, tunnel, peer, cb) {
-  if(!tunnel.queue) { tunnel.queue = []; }
-
   if(!!msg.type) { msg._from = this.get('name'); }
   var data = udp2p.toBuffer(msg);
   if(tunnel == -1) {
@@ -1059,6 +1073,7 @@ udp2p.prototype.sendBy = function (msg, tunnel, peer, cb) {
     peer: peer,
     cb: cb
   };
+  if(!tunnel.queue) { tunnel.queue = []; }
   tunnel.queue.push(job);
   this.keepGo(tunnel);
 };
