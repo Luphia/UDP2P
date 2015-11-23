@@ -74,13 +74,34 @@ client.peerFile(filepath, peer, function(err, response) {});
 ```
 ### Setup event
 ```node
+var savePath = '/Users/luphia/Desktop/';
+
 client.on('message', function (data) {
   console.log('%s: %s', data.from, JSON.stringify(data.content));
 });
 
 client.on('file', function (data) {
-  var savePath = '/Users/luphia/Desktop/' + data.name;
   console.log('recieve file [%s] from %s', data.from, data.name);
-  data.r2x.save(savePath);
+  data.r2x.save(savePath + data.name);
 });
+```
+
+### Setup Reaaction
+```node
+client.on('message', function (d) {
+  var file = d.content.file;
+  if(file) {
+    console.log(file);
+    client.response(file, d);
+  }
+  else {
+    console.log(d);
+  }
+});
+```
+
+### Request a file
+```node
+var filepath = '/Users/luphia/Desktop/upload/crownfond.png';
+client.request({file: filepath}, 'client2', function (d) {console.log('Response'); console.log(d);});
 ```
