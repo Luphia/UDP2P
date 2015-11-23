@@ -750,10 +750,17 @@ console.log('%s: %d %', msg._name, parseInt(r2x.getProgress() * 10000) / 100); /
     }
   }
   else if(typeof(msg) == 'object') { // recieve msg
-    recieveMsg.content = msg;
-    recieveMsg._response = msg._response;
-    delete msg._response;
-    this.messageEvent(recieveMsg);
+    switch(msg.type) {
+      case 'resend':
+        this.resendFile(msg);
+        break;
+
+      default:
+        recieveMsg.content = msg;
+        recieveMsg._response = msg._response;
+        delete msg._response;
+        this.messageEvent(recieveMsg);
+    }
   }
 };
 udp2p.prototype.fileReceive = function (msg, sender) {
@@ -793,7 +800,7 @@ udp2p.prototype.checkFileReceive = function () {
     setTimeout(function () {
       self._checkFileRecive = false;
       self.checkFileReceive();
-    }, 30000);
+    }, 10000);
   }
 };
 udp2p.prototype.askResend = function (r2x) {
@@ -831,9 +838,6 @@ udp2p.prototype.openTunnel = function (cb) {
         case 'ack':
           tunnel._target = msg._from;
           self.getAck(msg, peer);
-          break;
-        case 'resend':
-          self.resendFile(msg);
           break;
 
         default:
@@ -977,7 +981,6 @@ udp2p.prototype.peerFile = function (file, client, cb) {
     r2x._receiver = client;
 
     self.peerMsg(msg, client, function () {
-console.log('send %s', msg._name);//--
       for(var i = 0; i < sliceCount; i++) {
         self.peerShard(name, r2x, i, tunnel, peer);
       }
@@ -1003,7 +1006,6 @@ udp2p.prototype.resendFile = function (msg) {
   if(!r2x) { return; }
   var tunnel = this.getTunnel(r2x._receiver);
   var peer = this.getClientTunnel(r2x._receiver);
-
   msg.list = dvalue.distinct(msg.list).slice(0, 100);
   msg.list.map(function (v) {
     self.peerShard(name, r2x, v, tunnel, peer);
@@ -1035,7 +1037,7 @@ udp2p.prototype.tunnelSend = function (tunnel, job) {
   });
 };
 udp2p.prototype.keepGo = function (tunnel) {
-  //if(tunnel.busy) { return; }
+  if(tunnel.busy) { return; }
   var job = tunnel.queue.splice(0, 1)[0];
   if(!!job) { this.tunnelSend(tunnel, job); }
 };
