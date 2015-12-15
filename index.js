@@ -990,9 +990,13 @@ udp2p.prototype.peerFile = function (file, client, cb) {
     this.sendingFile[name] = r2x;
     r2x._receiver = client;
 
+    var done = function () {
+//++
+    };
+
     self.peerMsg(msg, client, function () {
       for(var i = 0; i < sliceCount; i++) {
-        self.peerShard(name, r2x, i, tunnel, peer);
+        self.peerShard(name, r2x, i, tunnel, peer, done);
       }
     });
   }
@@ -1002,7 +1006,7 @@ udp2p.prototype.peerFile = function (file, client, cb) {
     });
   }
 };
-udp2p.prototype.peerShard = function (name, r2x, i, tunnel, peer) {
+udp2p.prototype.peerShard = function (name, r2x, i, tunnel, peer, cb) {
   var shard = r2x.getShard(i);
   shard._name = name;
   this.monitor(tunnel);

@@ -21,8 +21,8 @@
   },
   "homepage": "https://github.com/Luphia/UDP2P#readme",
   "dependencies": {
-    "dvalue": "^1.0.2",
-    "raid2x": "^0.1.16",
+    "dvalue": "^1.0.4",
+    "raid2x": "^0.1.20",
     "textype": "^1.0.3"
   }
 }
