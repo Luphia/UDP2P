@@ -938,6 +938,7 @@ udp2p.prototype.response = function (msg, oldmsg, cb) {
   msg._response = oldmsg.content._id;
   if(fs.existsSync(msg)) {
     var b = fs.readFileSync(msg);
+    b._response = oldmsg.content._id;
     this.peerFile(b, target, cb);
   }
   else if(Buffer.isBuffer(msg)) {
