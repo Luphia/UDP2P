@@ -55,7 +55,7 @@ var os = require('os'),
     dvalue = require('dvalue');
 
 var server = {
-  address: 'tracker.cc-wei.com',
+  address: 'laria.space',
   port: 2266
 };
 
@@ -70,7 +70,7 @@ var udp2p = function (config) {
 // get self IP for connection
 udp2p.checkIP = function (cb) {
   var net = require('net');
-  var socket = net.createConnection(80, 'laria.space');
+  var socket = net.createConnection(80, server.address);
   socket.on('connect', function() {
   	if(typeof(cb) == 'function') { cb(undefined, socket.address().address); }
   	socket.end();
@@ -726,6 +726,7 @@ udp2p.prototype.onLeaderMsg = function (msg) {
   }
 };
 udp2p.prototype.onPeerMsg = function (msg, sender) {
+  var self = this;
   var recieveMsg = {
     from: sender
   };
@@ -741,7 +742,6 @@ udp2p.prototype.onPeerMsg = function (msg, sender) {
         recieveMsg._response = r2x._response;
         this.messageEvent(recieveMsg);
       }
-console.log('%s: %d %', msg._name, parseInt(r2x.getProgress() * 10000) / 100); //--
     }
   }
   else if(typeof(msg) == 'object') { // recieve msg
@@ -915,7 +915,7 @@ udp2p.prototype.peerMsg = function (msg, client, cb) {
   }
   else {
     this.peerTo(client, function (err, data) {
-      self.peerMsg(msg, client, cb);
+      setTimeout(function () { self.peerMsg(msg, client, cb); }, 100);
     });
   }
 };
@@ -936,7 +936,11 @@ udp2p.prototype.request = function (msg, client, to, cb) {
 udp2p.prototype.response = function (msg, oldmsg, cb) {
   var target = oldmsg.from;
   msg._response = oldmsg.content._id;
-  if(fs.existsSync(msg) || Buffer.isBuffer(msg)) {
+  if(fs.existsSync(msg)) {
+    var b = fs.readFileSync(msg);
+    this.peerFile(b, target, cb);
+  }
+  else if(Buffer.isBuffer(msg)) {
     this.peerFile(msg, target, cb);
   }
   else if(typeof(msg) == 'object') {
@@ -953,12 +957,12 @@ udp2p.prototype.messageEvent = function (msg) {
   else {
     if(!!msg.content) {
       this.event.message.map(function (cb) {
-        if(typeof(cb) == 'function') cb(msg.content);
+        if(typeof(cb) == 'function') cb(msg);
       });
     }
     if(!!msg.r2x) {
       this.event.file.map(function (cb) {
-        if(typeof(cb) == 'function') cb(msg.r2x);
+        if(typeof(cb) == 'function') cb(msg);
       });
     }
   }
@@ -979,7 +983,7 @@ udp2p.prototype.peerFile = function (file, client, cb) {
       _meta: r2x.getMeta(true)
     };
     // response a file
-    if(file._response) { msg._meta._response = file._response; }
+    if(file._response) { msg._response = file._response; }
 
     var sliceCount = msg._meta.sliceCount;
     this.sendingFile[name] = r2x;
@@ -993,7 +997,7 @@ udp2p.prototype.peerFile = function (file, client, cb) {
   }
   else {
     this.peerTo(client, function (err, data) {
-      self.peerFile(file, client, cb);
+      setTimeout(function () { self.peerFile(file, client, cb); }, 100);
     });
   }
 };
@@ -1011,12 +1015,10 @@ udp2p.prototype.monitor = function (tunnel) {
   tunnel._traffic = tunnel._traffic || 0;
   tunnel._update = tunnel._update || 0;
   var pass = new Date() - tunnel._update;
-  console.log(pass, tunnel._update);
   if(pass > 1000) {
     traffic = parseInt(tunnel._traffic * 1000 / pass);
     tunnel._traffic = 0;
     tunnel._update = new Date();
-    console.log(traffic, bytes/s);
   }
 }
 
