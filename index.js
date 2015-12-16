@@ -1014,7 +1014,7 @@ udp2p.prototype.peerShard = function (name, r2x, i, tunnel, peer, cb) {
   this.monitor(tunnel);
   this.sendBy(shard, tunnel, peer, function () {
     tunnel._traffic += r2x.attr.sliceSize;
-    cb();
+    if(typeof(cb) == 'function') cb();
   });
 };
 udp2p.prototype.monitor = function (tunnel) {
