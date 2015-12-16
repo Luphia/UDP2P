@@ -990,8 +990,10 @@ udp2p.prototype.peerFile = function (file, client, cb) {
     this.sendingFile[name] = r2x;
     r2x._receiver = client;
 
+    var todo = sliceCount;
     var done = function () {
-//++
+      todo--;
+      if(todo == 0 && typeof(cb) == 'function') { cb(); }
     };
 
     self.peerMsg(msg, client, function () {
@@ -1012,6 +1014,7 @@ udp2p.prototype.peerShard = function (name, r2x, i, tunnel, peer, cb) {
   this.monitor(tunnel);
   this.sendBy(shard, tunnel, peer, function () {
     tunnel._traffic += r2x.attr.sliceSize;
+    cb();
   });
 };
 udp2p.prototype.monitor = function (tunnel) {
