@@ -771,7 +771,9 @@ udp2p.prototype.fileReceive = function (msg, sender) {
   this.checkFileReceive();
 };
 udp2p.prototype.checkFileReceive = function () {
-  if(this._checkFileReceive) { return; }
+  if(!(new Date() / 1 > parseInt(this._checkFileReceive) || 0 )) { return; }
+  this._checkFileReceive = new Date() / 1 + period;
+
   var self = this;
   this._checkFileRecive = true;
   var total = 0;
@@ -789,13 +791,12 @@ udp2p.prototype.checkFileReceive = function () {
   }
 
   if(total == 0) {
-    this._checkFileRecive = false;
+    this._checkFileRecive = 0;
   }
   else {
     setTimeout(function () {
-      self._checkFileRecive = false;
       self.checkFileReceive();
-    }, period);
+    }, period * 2);
   }
 };
 udp2p.prototype.askResend = function (r2x) {
