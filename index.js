@@ -577,12 +577,13 @@ udp2p.prototype.connect = function (node, cb) {
 
 udp2p.prototype.heartbeat = function () {
   var self = this;
+  if(this.nextHeartbeat && !(new Date() / 1 >= this.nextHeartbeat)) { return; }
   this.sendHeartbeat(server);
-  if(this.isAlive) { return; }
+  this.nextHeartbeat = new Date() / 1 + period;
+
   this.isAlive = setTimeout(function () {
-    delete self.isAlive;
     self.heartbeat();
-  }, period);
+  }, period * 1.2);
 };
 udp2p.prototype.sendHeartbeat = function (server) {
   var self = this;
@@ -796,7 +797,7 @@ udp2p.prototype.checkFileReceive = function () {
   else {
     setTimeout(function () {
       self.checkFileReceive();
-    }, period * 2);
+    }, period * 1.2);
   }
 };
 udp2p.prototype.askResend = function (r2x) {
@@ -819,7 +820,6 @@ udp2p.prototype.openTunnel = function (cb) {
     var port = tunnel.address().port;
     cb(undefined, tunnel);
   });
-
   tunnel.on('message', function (msg, peer) {
     try {
       msg = udp2p.parseBuffer(msg);
@@ -896,9 +896,23 @@ udp2p.prototype.peerTo = function (client, cb) {
     var ev = 'punch_' + client;
     this.addJob(ev, 0, cb);
     this.openTunnel(function (err, tunnel) {
+      tunnel.target = client;
       self.setTunnel(client, tunnel);
       self.sendBy(msg, tunnel, server, function (err, data) {});
     });
+  }
+};
+udp2p.prototype.rePeerTo = function (client, cb) {
+  if(this.tunnelReady(client)) {
+    var tunnel = this.getTunnel(client);
+    var msg = this.translate({ type: 'connect', target: client });
+    var ev = 'punch_' + client;
+    this.setClient(client, {punching: false});
+    this.addJob(ev, 0, cb);
+    this.sendBy(msg, tunnel, server, function (err, data) {});
+  }
+  else {
+    this.peerTo(client, cb);
   }
 };
 
@@ -932,7 +946,10 @@ udp2p.prototype.request = function (msg, client, to, cb) {
   var ev = dvalue.randomID(12);
   this.responseWaiting[ev] = cb;
   msg._id = ev;
-  this.peerMsg(msg, client, function () {});
+
+  this.rePeerTo(client, function () {
+    self.peerMsg(msg, client, function () {});
+  });
 };
 udp2p.prototype.response = function (msg, oldmsg, cb) {
   var target = oldmsg.from;
