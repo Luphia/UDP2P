@@ -45,14 +45,15 @@ client.connect(server, function () {
 
  */
 
-var os = require('os'),
-    fs = require('fs'),
-    dgram = require('dgram'),
-    net = require('net'),
-    path = require('path'),
-    textype = require('textype'),
-    raid2x = require('raid2x'),
-    dvalue = require('dvalue');
+const os = require('os');
+const fs = require('fs');
+const dgram = require('dgram');
+const net = require('net');
+const path = require('path');
+const textype = require('textype');
+const raid2x = require('raid2x');
+const dvalue = require('dvalue');
+const dequeue = require('dequeue');
 
 var server = {
   address: 'laria.space',
@@ -192,6 +193,7 @@ udp2p.parseBuffer = function (buffer) {
 // prototype function
 udp2p.prototype.init = function (config) {
   var self = this;
+  this.FIFO = new dequeue();
   this.info = {};
   this.clients = [];
   this.clientIndex = {};
@@ -301,8 +303,17 @@ udp2p.prototype.listen = function (port, cb) {
     self.udp.bind(port);
   };
 
+  var fetchMsg = function () {
+    while (self.FIFO.length > 0) {
+      var args = self.FIFO.shift();
+      self.execMessage.apply(self, args);
+    }
+    setImmediate(fetchMsg);
+  };
+  fetchMsg();
+
   this.udp.on('message', function (msg, peer) {
-    self.execMessage(msg, peer);
+    self.FIFO.push(arguments);
   });
   this.udp.on('error', function (err) {
     console.trace(err);
@@ -820,7 +831,10 @@ udp2p.prototype.openTunnel = function (cb) {
     var port = tunnel.address().port;
     cb(undefined, tunnel);
   });
-  tunnel.on('message', function (msg, peer) {
+
+  tunnel.FIFO = new dequeue();
+
+  var onMsg = function (msg, peer) {
     try {
       msg = udp2p.parseBuffer(msg);
       peer.name = msg._from;
@@ -843,6 +857,19 @@ udp2p.prototype.openTunnel = function (cb) {
     catch (err) {
       console.log(err);
     }
+  };
+
+  var fetchMsg = function () {
+    while (tunnel.FIFO.length > 0) {
+      var args = tunnel.FIFO.shift();
+      onMsg.apply(self, args);
+    }
+    setImmediate(fetchMsg);
+  };
+  fetchMsg();
+
+  tunnel.on('message', function (msg, peer) {
+    tunnel.FIFO.push(arguments);
   });
   tunnel.on('error', function (err) {});
 
@@ -912,7 +939,9 @@ udp2p.prototype.rePeerTo = function (client, cb) {
     this.sendBy(msg, tunnel, server, function (err, data) {});
   }
   else {
-    this.peerTo(client, cb);
+    this.peerTo(client, function (err, data) {
+      setTimeout(cb, 100);
+    });
   }
 };
 
@@ -935,6 +964,7 @@ udp2p.prototype.peerMsg = function (msg, client, cb) {
   }
 };
 udp2p.prototype.request = function (msg, client, to, cb) {
+  var self = this;
   var timeout = typeof(arguments[2]) == 'number'? arguments[2]: 0;
   if(arguments.length < 4) {
     cb = typeof(arguments[2]) == 'function'? arguments[2]: undefined;
