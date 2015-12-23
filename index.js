@@ -1044,18 +1044,20 @@ udp2p.prototype.peerFile = function (file, client, cb) {
 
     var startSending = false;
     var askToSendFile = function () {
+      var re = setTimeout(function () {
+        if(!startSending) {
+          askToSendFile();
+        }
+      }, 1000);
+
       self.request(msg, client, function (d) {
+        clearTimeout(re);
         if(startSending) { return; }
         startSending = true;
         for(var i = 0; i < sliceCount; i++) {
           self.peerShard(name, r2x, i, tunnel, peer, done);
         }
       });
-      setTimeout(function () {
-        if(!startSending) {
-          askToSendFile();
-        }
-      }, 1000);
     };
     askToSendFile();
   }
