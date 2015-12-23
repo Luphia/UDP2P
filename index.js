@@ -588,7 +588,7 @@ udp2p.prototype.connect = function (node, cb) {
 
 udp2p.prototype.heartbeat = function () {
   var self = this;
-  if(this.nextHeartbeat && !(new Date() / 1 >= this.nextHeartbeat)) { return; }
+  if(!(new Date() / 1 >= (parseInt(this.nextHeartbeat) || 0))) { return; }
   this.sendHeartbeat(server);
   this.nextHeartbeat = new Date() / 1 + period;
 
@@ -784,7 +784,7 @@ udp2p.prototype.fileReceive = function (msg, sender) {
   this.checkFileReceive();
 };
 udp2p.prototype.checkFileReceive = function () {
-  if(!(new Date() / 1 > parseInt(this._checkFileReceive) || 0 )) { return; }
+  if(!(new Date() / 1 > (parseInt(this._checkFileReceive) || 0 ))) { return; }
   this._checkFileReceive = new Date() / 1 + period;
 
   var self = this;
@@ -820,9 +820,7 @@ udp2p.prototype.askResend = function (r2x) {
     name: r2x._name,
     list: list
   });
-  this.peerMsg(message, client, function () {
-    console.log('Ask %s to resend %s: %s', r2x._sender, r2x._name, list); //--
-  });
+  this.peerMsg(message, client, function () {});
 };
 
 udp2p.prototype.openTunnel = function (cb) {
@@ -891,7 +889,7 @@ udp2p.prototype.punch = function (client, cb) {
     }, 1000, period, function () {
       if(!self.tunnelReady(client)) {
         var old = self.getTunnel(client.name);
-        if(typeof(old.close) == 'function') { old.close(); }
+        // if(typeof(old.close) == 'function') { old.close(); }
         self.setTunnel(client.name, -1);
         self.setClientTunnel(client.name, {name: client.name});
       }
