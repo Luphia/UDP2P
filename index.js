@@ -526,6 +526,9 @@ udp2p.prototype.translate = function (cmd) {
       message.name = cmd.name;
       message.list = cmd.list;
       break;
+    case 'recieveFile':
+      message.type = 'recieveFile';
+      break;
 
     // for server mode
     case 'openTunnel':
@@ -753,6 +756,9 @@ udp2p.prototype.onPeerMsg = function (msg, sender) {
         recieveMsg.r2x = r2x;
         recieveMsg._response = r2x._response;
         this.messageEvent(recieveMsg);
+        var cmd = {_id: msg._name + '_finish', type: 'recieveFile'};
+        var msg = this.translate(cmd);
+        this.peerMsg(msg, sender, function () {});
       }
     }
   }
@@ -761,7 +767,9 @@ udp2p.prototype.onPeerMsg = function (msg, sender) {
       case 'resend':
         this.resendFile(msg);
         break;
-
+      case 'recieveFile':
+        this.done(msg._id);
+        break;
       default:
         recieveMsg.content = msg;
         recieveMsg._response = msg._response;
@@ -1036,12 +1044,6 @@ udp2p.prototype.peerFile = function (file, client, cb) {
     this.sendingFile[name] = r2x;
     r2x._receiver = client;
 
-    var todo = sliceCount;
-    var done = function () {
-      todo--;
-      if(todo == 0 && typeof(cb) == 'function') { cb(); }
-    };
-
     var startSending = false;
     var askToSendFile = function () {
       var re = setTimeout(function () {
@@ -1055,11 +1057,14 @@ udp2p.prototype.peerFile = function (file, client, cb) {
         if(startSending) { return; }
         startSending = true;
         for(var i = 0; i < sliceCount; i++) {
-          self.peerShard(name, r2x, i, tunnel, peer, done);
+          self.peerShard(name, r2x, i, tunnel, peer, function () {});
         }
       });
     };
     askToSendFile();
+
+    var ev_finish = name + '_finish';
+    this.addJob(ev_finish, 0, cb);
   }
   else {
     this.peerTo(client, function (err, data) {
