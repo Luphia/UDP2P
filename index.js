@@ -308,7 +308,7 @@ udp2p.prototype.listen = function (port, cb) {
       var args = self.FIFO.shift();
       self.execMessage.apply(self, args);
     }
-    setImmediate(fetchMsg);
+    setTimeout(fetchMsg, 10);
   };
   fetchMsg();
 
